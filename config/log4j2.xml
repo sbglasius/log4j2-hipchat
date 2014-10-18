@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<Configuration monitorInterval='60' packages="com.github.log4j2hipchat">
+  <Appenders>
+    <Console name="STDOUT" target="SYSTEM_OUT">
+      <PatternLayout pattern="%d{ABSOLUTE} %-5p [%c{1}] - %m%n"/>
+    </Console>
+    
+    <Hipchat name="HipchatAppender" authToken="insertyourowntokenhere" 
+      roomId="Logging" 
+      includeTimeStamp="false"
+      from="$CLASS"
+      color="red"/>
+  </Appenders>
+  
+  <Loggers>
+    <Logger name="com.github.log4j2hipchat" level="info"/>
+
+    <Root level="trace">
+      <AppenderRef ref="STDOUT" level="info"/>
+      <AppenderRef ref="HipchatAppender" level="error"/>
+    </Root>
+  </Loggers>
+</Configuration>

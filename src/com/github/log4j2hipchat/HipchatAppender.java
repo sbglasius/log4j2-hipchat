@@ -53,8 +53,6 @@ public class HipchatAppender extends AbstractAppender {
 
   private final boolean includeStackTrace;
 
-  private final String authToken;
-
   private final String roomId;
 
   private String from;
@@ -65,13 +63,16 @@ public class HipchatAppender extends AbstractAppender {
 
   private final String color;
 
+  // Instantiate API
+  HipChatAPI hipchatApi = HipChatAPI.INSTANCE;
+
+  // Hipchat API path for rooms
+  private static final String PATH = "rooms/message";
+
   // Valid Hipchat colors
   private static final Set<String> VALID_COLORS = new HashSet<String>(
       Arrays.asList(new String[] {"yellow", "red", "green", "purple", "gray",
           "random"}));
-
-  // Hipchat API path for rooms
-  private static final String PATH = "rooms/message";
 
   protected HipchatAppender(final String name,
       final Layout<? extends Serializable> layout, final Filter filter,
@@ -83,20 +84,16 @@ public class HipchatAppender extends AbstractAppender {
     this.includeSource = includeSource;
     this.includeThreadContext = includeThreadContext;
     this.includeStackTrace = includeStackTrace;
-    this.authToken = authToken;
     this.roomId = roomId;
     this.from = from;
     this.includeTimeStamp = includeTimeStamp;
     this.notify = notify;
     this.color = color;
-
+    hipchatApi.setAuthToken(authToken);
   }
 
   @Override
   public void append(LogEvent event) {
-    // Instantiate API
-    HipChatAPI hipchatApi = HipChatAPI.INSTANCE;
-    hipchatApi.setAuthToken(authToken);
 
     final StringBuilder builder = new StringBuilder();
 
@@ -149,37 +146,37 @@ public class HipchatAppender extends AbstractAppender {
         builder.append("\n").append(entry.getKey()).append("=")
             .append(entry.getValue());
       }
-
       final List<String> contextStack = event.getContextStack().asList();
       if (contextStack != null && !contextStack.isEmpty()) {
         builder.append("\ncontextStack=").append(contextStack.toString());
       }
     }
 
-    // Stack Trace
+    // Source
     if (includeSource && source != null) {
-      builder.append("\n<i>").append(source.getFileName());
-      builder.append(":").append(source.getLineNumber());
-      builder.append(" [").append(source.getClassName());
-      builder.append("#").append(source.getMethodName()).append("()]</i>");
+      builder
+          .append("\n<i>")
+          .append(
+              String.format("%s.%s(%s:%d)", source.getClassName(),
+                  source.getMethodName(), source.getFileName(),
+                  source.getLineNumber())).append("</i>");
     }
 
+    // Stack Trace
     @SuppressWarnings("all")
     final Throwable thrown = event.getThrown();
     if (includeStackTrace && thrown != null) {
       final StringBuilder stackTraceBuilder = new StringBuilder();
       for (StackTraceElement stackTraceElement : thrown.getStackTrace()) {
-        new Formatter(stackTraceBuilder).format("\n%s.%s(%s:%d)%n",
+        new Formatter(stackTraceBuilder).format("%nat %s.%s(%s:%d)",
             stackTraceElement.getClassName(),
             stackTraceElement.getMethodName(), stackTraceElement.getFileName(),
             stackTraceElement.getLineNumber());
       }
 
-      builder.append("\nexceptionClass=").append(
-          thrown.getClass().getCanonicalName());
-      builder.append("\nexceptionMessage=").append(thrown.getMessage());
-      builder.append("\nexceptionStackTrace=").append(
-          stackTraceBuilder.toString());
+      builder.append("\n<u>").append(thrown.getClass().getCanonicalName())
+          .append("</u>: ").append(thrown.getMessage())
+          .append(stackTraceBuilder.toString());
     }
 
     if (!postToHipchat(roomId, from, builder.toString()
@@ -208,9 +205,6 @@ public class HipchatAppender extends AbstractAppender {
    */
   private boolean postToHipchat(String room, String username, String message,
       boolean notify, String color) {
-    // Instantiate API
-    HipChatAPI hipchatApi = HipChatAPI.INSTANCE;
-    hipchatApi.setAuthToken(authToken);
     // Build POST string
     StringBuilder data = new StringBuilder();
     try {
