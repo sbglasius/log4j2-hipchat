@@ -1,15 +1,13 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<Configuration monitorInterval='60' packages="com.github.log4j2hipchat">
+<Configuration packages="com.github.log4j2hipchat">
   <Appenders>
     <Console name="STDOUT" target="SYSTEM_OUT">
       <PatternLayout pattern="%d{ABSOLUTE} %-5p [%c{1}] - %m%n"/>
     </Console>
     
-    <Hipchat name="HipchatAppender" authToken="insertyourowntokenhere" 
-      roomId="Logging" 
-      includeTimeStamp="false"
-      from="$CLASS"
-      color="red"/>
+    <HipChat name="HipChatAppender" 
+      authToken="insertyourhipchattokenhere" 
+      roomId="Logging"/>
   </Appenders>
   
   <Loggers>
@@ -17,7 +15,7 @@
 
     <Root level="trace">
       <AppenderRef ref="STDOUT" level="info"/>
-      <AppenderRef ref="HipchatAppender" level="error"/>
+      <AppenderRef ref="HipChatAppender" level="info"/>
     </Root>
   </Loggers>
 </Configuration>

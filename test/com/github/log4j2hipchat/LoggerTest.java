@@ -12,15 +12,23 @@ import org.apache.logging.log4j.Logger;
  */
 public final class LoggerTest {
 
-  public static void main(String[] args) {
-    Logger log = LogManager.getLogger();
+  public static Logger log = LogManager.getLogger();
 
+  public static void main(String[] args) {
+    log.info("This is a test of the HipChat Appender.");
     log.warn("Danger, Will Robinson! Exception approaching!");
+    bustArray(42);
+    log.fatal("Die! Die! Die!");
+  }
+
+  public static int bustArray(int size) {
+    int retVal = 0;
     try {
-      int[] foo = new int[1];
-      foo[1] = 0;
+      int[] foo = new int[size];
+      retVal = foo[size];
     } catch (Exception e) {
       log.error("Arrays are indexed by zero!", e);
     }
+    return retVal;
   }
 }

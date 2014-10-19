@@ -1,8 +1,89 @@
-log4j2-hipchat
-==============
+Log4j2 Appender for HipChat
+============================
 
-Appender to post log messages to a Hipchat room.
+This appender forwards log events to a HipChat room.
 
-This is an active work-in-progress that will change frequently.
+## Appender Configuration
 
-I'm an amateur coder/hacker just trying to offer my efforts to the community and welcome advice/contributions from professionals for improving any aspect of this code.
+This appender uses [HipChat's room notification API](https://www.hipchat.com/docs/apiv2/method/send_room_notification) for message delivery.
+
+To use this appender you first need to create a room notification token at [HipChat](https://hipchat.com/rooms). 
+
+You need to configure, at a minimum, in your `log4j2.xml` or equivalent:
+   1. In <configuration>, tell Log4j2 where to find this plugin
+   2. Specify a HipChat roomId
+   3. Specify your notification authToken 
+
+```xml
+<Configuration packages="com.github.log4j2hipchat">
+  <Appenders>
+    <Hipchat name="HipChatAppender" 
+      authToken="yourauthtoken" 
+      roomId="Logging"/>
+  </Appenders>
+  <Loggers>
+    <!-- which package(s) to log -->
+    <Logger name="com.github.log4j2hipchat" level="info"/>
+    <Root level="trace">
+      <AppenderRef ref="HipChatAppender" level="error"/>
+    </Root>
+  </Loggers>
+</Configuration>
+```
+
+This appender uses synchronous delivery of log messages. 
+You may wish to wrap it into Log4j2's [AsyncAppender](http://logging.apache.org/log4j/2.x/manual/appenders.html#AsyncAppender). 
+You may also wish to use a filter, to only log ERROR messages to HipChat, as HipChat is not intended to be used for high volume logging.
+HipChat recommends [Exceptional](http://exceptional.io/) or [Papertrail](http://papertrailapp.com/) if you need higher volume than this appender will support.
+
+In addition to the above minimum configuration, you may specify which components of the log event notification to include in either the `from` field
+(the username the message is posted from) and the `message` field (the contents of the notification).  
+You may also choose whether to `notify` HipChat room members of the post, and which `color` to make the post.
+Note the `from` field will be truncated to 15 characters.  
+The following strings will be substituted as indicated:
+   $class - The class name in which the notification originated
+   $level - The log4j2 level (e.g., FATAL, ERROR, WARN...)
+   $message - The contents of the log message
+   $marker - The marker, if any
+   $source - The class/method and filename/line number of the event
+   $context - The NDC thread context, if any
+   $stack - A stack trace, if propagated to the log event
+   $date - Date of the log event as YYYY-MM-DD
+   $time - Time of the log event as HH:mm:ss
+   
+The following optional fields may be added to the `log4j2.xml` configuration. Defaults are shown:
+   from="$class"
+   message="$level: $message $marker $source $context $stack"
+   notify="true"
+   format="html" (Options are "text" or "html")
+   color="red,FATAL,ERROR,yellow,WARN,purple" 
+   
+ Color options are "red", "yellow", "green", "purple", "gray", and "random". 
+ A comma-delimited list will be iterated; the last color seen when the log level is encountered will be used.
+ The default prints FATAL and ERROR messages in red, WARN messages in yellow, and all other messages in purple.
+
+## Dependencies
+
+In addition to log4j2's core and api jars, this code depends on:
+   - [Apache Commons IO](http://commons.apache.org/proper/commons-io/)
+   - [CollabSoft's HipChatAPI](https://bitbucket.org/collabsoft/hipchatapi/) 
+
+## Ascknowledgements
+
+Source code initially derived from [Graylog2's log4j2 Gelf Appender](https://github.com/Graylog2/log4j2-gelf)
+
+## License
+
+Copyright 2014 Daniel Widdis
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+   http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
