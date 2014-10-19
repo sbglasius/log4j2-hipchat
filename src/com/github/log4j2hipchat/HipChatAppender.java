@@ -281,9 +281,6 @@ public class HipChatAppender extends AbstractAppender {
       @PluginElement("Layout") Layout<? extends Serializable> layout,
       @PluginAttribute(value = "name") String name,
       @PluginAttribute(value = "ignoreExceptions", defaultBoolean = true) Boolean ignoreExceptions,
-      @PluginAttribute(value = "includeSource", defaultBoolean = true) Boolean includeSource,
-      @PluginAttribute(value = "includeThreadContext", defaultBoolean = true) Boolean includeThreadContext,
-      @PluginAttribute(value = "includeStackTrace", defaultBoolean = true) Boolean includeStackTrace,
       // Hipchat API specific
       @PluginAttribute(value = "authToken") String authToken,
       @PluginAttribute(value = "roomId") String roomId,
