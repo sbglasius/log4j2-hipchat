@@ -57,11 +57,11 @@ The following optional fields may be added to the `log4j2.xml` configuration. De
 * `message="$level: $message $marker <i>$source</i> $context $stack"`
 * `notify="true"`
 * `format="html"` 
-* `color="red,FATAL,ERROR,yellow,WARN,purple"` 
+* `color="red: FATAL, ERROR; yellow: WARN; purple"` 
    
  Format options are "text" or "html" and control how HipChat parses @mentions, links, etc. 
  Color options are "red", "yellow", "green", "purple", "gray", and "random". 
- A comma-delimited list will be iterated; the last color seen when the log level is encountered will be used.
+ The non-word-delimited list will be iterated; the last color seen when the log level is encountered will be used.
  The default prints FATAL and ERROR messages in red, WARN messages in yellow, and all other messages in purple.
 
 ## Dependencies
@@ -70,7 +70,7 @@ In addition to log4j2's core and api jars, this code depends on:
    - [Apache Commons IO](http://commons.apache.org/proper/commons-io/)
    - [CollabSoft's HipChatAPI](https://bitbucket.org/collabsoft/hipchatapi/) 
 
-## Ascknowledgements
+## Acknowledgments
 
 Source code initially derived from [Graylog2's log4j2 Gelf Appender](https://github.com/Graylog2/log4j2-gelf).
 

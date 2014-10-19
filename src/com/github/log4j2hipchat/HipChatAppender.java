@@ -109,11 +109,11 @@ public class HipChatAppender extends AbstractAppender {
 
   private String pickColor(String color, String level) {
     String pickColor = "yellow";
-    for (String s : color.split(",")) {
-      if (level.equals(s.toUpperCase().trim())) {
+    for (String s : color.split("\\W+")) {
+      if (level.equals(s.toUpperCase())) {
         break;
       } else {
-        String c = s.toLowerCase().trim();
+        String c = s.toLowerCase();
         if (VALID_COLORS.contains(c)) {
           pickColor = c;
         }
@@ -290,7 +290,7 @@ public class HipChatAppender extends AbstractAppender {
       @PluginAttribute(value = "from", defaultString = "$class") String from,
       @PluginAttribute(value = "message", defaultString = "$level: $message $marker <i>$source</i> $context $stack") String message,
       @PluginAttribute(value = "notify", defaultBoolean = true) Boolean notify,
-      @PluginAttribute(value = "color", defaultString = "red,FATAL,ERROR,yellow,WARN,purple") String color,
+      @PluginAttribute(value = "color", defaultString = "red: FATAL, ERROR; yellow: WARN; purple") String color,
       @PluginAttribute(value = "format", defaultString = "html") String format) {
     if (name == null) {
       LOGGER.error("No name provided for ConsoleAppender");
