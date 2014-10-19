@@ -155,7 +155,7 @@ public class HipChatAppender extends AbstractAppender {
     if (sub.contains("$source")) {
       sub = sub.replace(
           "$source",
-          source != null ? String.format("%n<i>%s.%s(%s:%d)</i>",
+          source != null ? String.format("%n%s.%s(%s:%d)",
               source.getClassName(), source.getMethodName(),
               source.getFileName(), source.getLineNumber()) : "");
     }
@@ -187,7 +187,7 @@ public class HipChatAppender extends AbstractAppender {
               stackTraceElement.getFileName(),
               stackTraceElement.getLineNumber());
         }
-        sub = sub.replace("$stack", String.format("%n<u>%s</u>:%s%s", thrown
+        sub = sub.replace("$stack", String.format("%n%s: %s%s", thrown
             .getClass().getCanonicalName(), thrown.getMessage(),
             stackTraceBuilder.toString()));
       } else {
@@ -288,7 +288,7 @@ public class HipChatAppender extends AbstractAppender {
       @PluginAttribute(value = "authToken") String authToken,
       @PluginAttribute(value = "roomId") String roomId,
       @PluginAttribute(value = "from", defaultString = "$class") String from,
-      @PluginAttribute(value = "message", defaultString = "$level: $message $marker $source $context $stack") String message,
+      @PluginAttribute(value = "message", defaultString = "$level: $message $marker <i>$source</i> $context $stack") String message,
       @PluginAttribute(value = "notify", defaultBoolean = true) Boolean notify,
       @PluginAttribute(value = "color", defaultString = "red,FATAL,ERROR,yellow,WARN,purple") String color,
       @PluginAttribute(value = "format", defaultString = "html") String format) {
