@@ -59,6 +59,37 @@ public class HipChatAppender extends AbstractAppender {
 
   private final String format;
 
+  // String substitutions
+  private enum Substitutions {
+    Class("$class"),
+    Level("$level"),
+    Message("$message"),
+    Marker("$marker"),
+    Source("$source"),
+    Context("$context"),
+    Stack("$stack"),
+    Date("$date"),
+    Time("$time");
+
+    private final String sub;
+
+    /**
+     * @param sub
+     */
+    private Substitutions(final String sub) {
+      this.sub = sub;
+    }
+
+    /*
+     * (non-Javadoc)
+     * @see java.lang.Enum#toString()
+     */
+    @Override
+    public String toString() {
+      return sub;
+    }
+  }
+
   // Instantiate API
   HipChatAPI hipchatApi = HipChatAPI.INSTANCE;
 
@@ -70,6 +101,11 @@ public class HipChatAppender extends AbstractAppender {
       Arrays.asList(new String[] {"yellow", "red", "green", "purple", "gray",
           "random"}));
 
+  private static final String DEFAULT_COLOR = "yellow";
+
+  /**
+   * Constructor. Instantiates the HipChat API instance.
+   */
   protected HipChatAppender(final String name,
       final Layout<? extends Serializable> layout, final Filter filter,
       final boolean ignoreExceptions, final String authToken,
@@ -85,6 +121,12 @@ public class HipChatAppender extends AbstractAppender {
     this.format = format;
   }
 
+  /**
+   * Append method that does the work of logging each event
+   * 
+   * @param event
+   *        The log event
+   */
   @Override
   public void append(LogEvent event) {
 
@@ -107,8 +149,18 @@ public class HipChatAppender extends AbstractAppender {
     }
   }
 
+  /**
+   * Chooses colors from a non-word delimited list. The last color seen before
+   * the level is encountered is returned.
+   * 
+   * @param color
+   *        Non-word delimited string of colors and levels
+   * @param level
+   *        the level to match
+   * @return color matching the specified level
+   */
   private String pickColor(String color, String level) {
-    String pickColor = "yellow";
+    String pickColor = DEFAULT_COLOR;
     for (String s : color.split("\\W+")) {
       if (level.equals(s.toUpperCase())) {
         break;
@@ -122,46 +174,58 @@ public class HipChatAppender extends AbstractAppender {
     return pickColor;
   }
 
+  /**
+   * Substitutes for various $-patterns in the api strings
+   * 
+   * @param s
+   *        The string on which to perform substitutions
+   * @param event
+   *        The log event
+   * @return String with patterns substituted
+   */
   private String doSubstitutions(final String s, LogEvent event) {
     String sub = new String(s);
     final StackTraceElement source = event.getSource();
 
     // Class
-    if (sub.contains("$class")) {
+    if (sub.contains(Substitutions.Class.toString())) {
       // Simple Source Class name
       String className = source != null ? source.getClassName() : "";
       String[] classArr = className.split("\\.");
-      sub = sub.replace("$class",
+      sub = sub.replace(Substitutions.Class.toString(),
           (classArr.length > 0) ? classArr[classArr.length - 1] : "");
     }
 
     // Level
-    if (sub.contains("$level")) {
-      sub = sub.replace("$level", event.getLevel().name());
+    if (sub.contains(Substitutions.Level.toString())) {
+      sub = sub
+          .replace(Substitutions.Level.toString(), event.getLevel().name());
     }
 
     // Message
-    if (sub.contains("$message")) {
-      sub = sub.replace("$message", event.getMessage().getFormattedMessage());
+    if (sub.contains(Substitutions.Message.toString())) {
+      sub = sub.replace(Substitutions.Message.toString(), event.getMessage()
+          .getFormattedMessage());
     }
 
     // Marker
-    if (sub.contains("$marker")) {
+    if (sub.contains(Substitutions.Marker.toString())) {
       final Marker marker = event.getMarker();
-      sub = sub.replace("$marker", marker != null ? marker.getName() : "");
+      sub = sub.replace(Substitutions.Marker.toString(),
+          marker != null ? marker.getName() : "");
     }
 
     // Source
-    if (sub.contains("$source")) {
+    if (sub.contains(Substitutions.Source.toString())) {
       sub = sub.replace(
-          "$source",
+          Substitutions.Source.toString(),
           source != null ? String.format("%n%s.%s(%s:%d)",
               source.getClassName(), source.getMethodName(),
               source.getFileName(), source.getLineNumber()) : "");
     }
 
     // Thread Context
-    if (sub.contains("$context")) {
+    if (sub.contains(Substitutions.Context.toString())) {
       final StringBuilder sb = new StringBuilder();
       for (Map.Entry<String, String> entry : event.getContextMap().entrySet()) {
         sb.append("\n").append(entry.getKey()).append("=")
@@ -171,13 +235,14 @@ public class HipChatAppender extends AbstractAppender {
       if (contextStack != null && !contextStack.isEmpty()) {
         sb.append("\ncontextStack=").append(contextStack.toString());
       }
-      sub = sub.replace("$context", sb.length() > 0 ? sb.toString() : "");
+      sub = sub.replace(Substitutions.Context.toString(),
+          sb.length() > 0 ? sb.toString() : "");
     }
 
     // Stack Trace
     @SuppressWarnings("all")
     final Throwable thrown = event.getThrown();
-    if (sub.contains("$stack")) {
+    if (sub.contains(Substitutions.Stack.toString())) {
       if (thrown != null) {
         final StringBuilder stackTraceBuilder = new StringBuilder();
         for (StackTraceElement stackTraceElement : thrown.getStackTrace()) {
@@ -187,26 +252,28 @@ public class HipChatAppender extends AbstractAppender {
               stackTraceElement.getFileName(),
               stackTraceElement.getLineNumber());
         }
-        sub = sub.replace("$stack", String.format("%n%s: %s%s", thrown
-            .getClass().getCanonicalName(), thrown.getMessage(),
-            stackTraceBuilder.toString()));
+        sub = sub.replace(Substitutions.Stack.toString(), String.format(
+            "%n%s: %s%s", thrown.getClass().getCanonicalName(),
+            thrown.getMessage(), stackTraceBuilder.toString()));
       } else {
-        sub = sub.replace("$stack", "");
+        sub = sub.replace(Substitutions.Stack.toString(), "");
       }
     }
 
     // TimeStamp
-    if (sub.contains("$date")) {
+    if (sub.contains(Substitutions.Date.toString())) {
       SimpleDateFormat dateFormat = new SimpleDateFormat("yyyy-MM-dd");
       Date timeStamp = new Date();
       timeStamp.setTime(event.getTimeMillis());
-      sub = sub.replace("$date", dateFormat.format(timeStamp));
+      sub = sub.replace(Substitutions.Date.toString(),
+          dateFormat.format(timeStamp));
     }
-    if (sub.contains("$time")) {
+    if (sub.contains(Substitutions.Time.toString())) {
       SimpleDateFormat dateFormat = new SimpleDateFormat("HH:mm:ss");
       Date timeStamp = new Date();
       timeStamp.setTime(event.getTimeMillis());
-      sub = sub.replace("$time", dateFormat.format(timeStamp));
+      sub = sub.replace(Substitutions.Time.toString(),
+          dateFormat.format(timeStamp));
     }
 
     return sub;
@@ -263,17 +330,21 @@ public class HipChatAppender extends AbstractAppender {
    *        to {@code false} exceptions will be propagated to the caller,
    *        instead. Must be set to {@code false} when wrapping this Appender in
    *        a {@link org.apache.logging.log4j.core.appender.FailoverAppender}.
-   * @param includeSource
-   *        Whether the source of the log message should be included, defaults
-   *        to {@code true}.
-   * @param includeThreadContext
-   *        Whether the contents of the
-   *        {@link org.apache.logging.log4j.ThreadContext} should be included,
-   *        defaults to {@code true}.
-   * @param includeStackTrace
-   *        Whether a full stack trace should be included, defaults to
-   *        {@code true}.
-   * @return a new Hipchat provider
+   * @param authToken
+   *        HipChat room notification token
+   * @param roomId
+   *        HipChat room_id parameter
+   * @param from
+   *        HipChat from parameter
+   * @param message
+   *        HipChat message parameter
+   * @param notify
+   *        HipChat notify parameter
+   * @param color
+   *        parameter
+   * @param format
+   *        parameter
+   * @return The Appender
    */
   @PluginFactory
   public static HipChatAppender createHipchatAppender(
