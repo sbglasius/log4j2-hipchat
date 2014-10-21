@@ -131,10 +131,12 @@ public class HipChatAppender extends AbstractAppender {
   public void append(LogEvent event) {
 
     String fromStr = doSubstitutions(from, event);
-    String messageStr = doSubstitutions(message, event);
-
     // Truncate from to 15 characters
     fromStr = fromStr.substring(0, Math.min(15, fromStr.length()));
+
+    String messageStr = doSubstitutions(message, event);
+    // Truncate message to 10K characters
+    messageStr = messageStr.substring(0, Math.min(10000, messageStr.length()));
 
     if (format.equals("html")) {
       messageStr = messageStr.replace("\n", "<br \\>");

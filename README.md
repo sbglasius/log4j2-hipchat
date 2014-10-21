@@ -73,7 +73,7 @@ In addition to log4j2's core and api jars, this code depends on:
 ## Acknowledgments
 
 * Source code initially derived from [Graylog2's log4j2 Gelf Appender](https://github.com/Graylog2/log4j2-gelf).
-* Documentation initially derived from [AnjLab's logbaack HipChat Appender](https://github.com/anjlab/logback-hipchat-appender)
+* Documentation initially derived from [AnjLab's logback HipChat Appender](https://github.com/anjlab/logback-hipchat-appender)
 
 ## License
 
