@@ -47,6 +47,8 @@ import com.hipchat.api.v1.HipChatAPI.Method;
 @Plugin(name = "Hipchat", category = "Core", elementType = "appender", printObject = true)
 public class HipChatAppender extends AbstractAppender {
 
+  private static final long serialVersionUID = 1784003660841233595L;
+
   private final String roomId;
 
   private final String from;
