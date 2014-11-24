@@ -16,6 +16,9 @@ public final class LoggerTest {
 
   public static void main(String[] args) {
     log.info("This is a test of the HipChat Appender.");
+    for (int i = 0; i < 10; i++) {
+      log.info("Testing limiter: {}", i);
+    }
     log.warn("Danger, Will Robinson! Exception approaching!");
     bustArray(42);
     log.fatal("Die! Die! Die!");

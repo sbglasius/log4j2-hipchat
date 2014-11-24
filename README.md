@@ -38,6 +38,8 @@ HipChat recommends [Exceptional](http://exceptional.io/) or [Papertrail](http://
 
 In addition to the above minimum configuration, you may specify which components of the log event notification to include in either the `from` field (the username the message is posted from) and the `message` field (the contents of the notification). You may also choose whether to `notify` HipChat room members of the post, which `color` to make the post, and which `format` to post in. Note the `from` field will be truncated to 15 characters.  See the [HipChat API](https://www.hipchat.com/docs/api/method/rooms/message) for more information.
 
+This appender supports a rate limiter.  It will post `rate` messages per `per` seconds, silently ignoring any additional messages.
+
 The following strings will be substituted as indicated:
 
 String  | Substitution
@@ -58,11 +60,14 @@ The following optional fields may be added to the `log4j2.xml` configuration. De
 * `notify="true"`
 * `format="html"` 
 * `color="red: FATAL, ERROR; yellow: WARN; purple"` 
+* `rate="2147483647"`
+* `per="1.0"`
    
  Format options are "text" or "html" and control how HipChat parses @mentions, links, etc. 
  Color options are "red", "yellow", "green", "purple", "gray", and "random". 
  The non-word-delimited list will be iterated; the last color seen when the log level is encountered will be used.
  The default prints FATAL and ERROR messages in red, WARN messages in yellow, and all other messages in purple.
+ Rate is an (integer) number; Per is a decimal number of seconds.
 
 ## Dependencies
 

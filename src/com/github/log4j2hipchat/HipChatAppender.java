@@ -61,6 +61,16 @@ public class HipChatAppender extends AbstractAppender {
 
   private final String format;
 
+  private final int rate;
+
+  private final double per;
+
+  // messages allowed
+  private double allowance = 0d;
+
+  // last log call
+  private long lastLog = 0l;
+
   // String substitutions
   private enum Substitutions {
     Class("$class"),
@@ -112,7 +122,8 @@ public class HipChatAppender extends AbstractAppender {
       final Layout<? extends Serializable> layout, final Filter filter,
       final boolean ignoreExceptions, final String authToken,
       final String roomId, final String from, final String message,
-      final boolean notify, final String color, final String format) {
+      final boolean notify, final String color, final String format,
+      final int rate, final double per) {
     super(name, filter, layout, ignoreExceptions);
     hipchatApi.setAuthToken(authToken);
     this.roomId = roomId;
@@ -121,6 +132,32 @@ public class HipChatAppender extends AbstractAppender {
     this.notify = notify;
     this.color = color;
     this.format = format;
+    this.rate = rate;
+    this.per = per;
+  }
+
+  /**
+   * Append method: checks rate limit and then appends
+   * 
+   * @param event
+   *        The log event
+   */
+  @Override
+  public void append(LogEvent event) {
+    // Check rate limiter
+    long currentLog = System.currentTimeMillis();
+    double elapsed = (currentLog - lastLog) / 1000d;
+    lastLog = currentLog;
+    allowance = Math.min(rate, allowance + elapsed * (rate / per));
+    System.out.println("Message:" + event.getMessage());
+    System.out.println("Current:" + currentLog);
+    System.out.println("Elapsed:" + elapsed);
+    System.out.println("Allowance:" + allowance);
+    // Post or silently ignore
+    if (allowance >= 1d) {
+      appendEvent(event);
+      allowance -= 1d;
+    }
   }
 
   /**
@@ -129,8 +166,7 @@ public class HipChatAppender extends AbstractAppender {
    * @param event
    *        The log event
    */
-  @Override
-  public void append(LogEvent event) {
+  public void appendEvent(LogEvent event) {
 
     String fromStr = doSubstitutions(from, event);
     // Truncate from to 15 characters
@@ -363,7 +399,12 @@ public class HipChatAppender extends AbstractAppender {
       @PluginAttribute(value = "message", defaultString = "$level: $message $marker <i>$source</i> $context $stack") String message,
       @PluginAttribute(value = "notify", defaultBoolean = true) Boolean notify,
       @PluginAttribute(value = "color", defaultString = "red: FATAL, ERROR; yellow: WARN; purple") String color,
-      @PluginAttribute(value = "format", defaultString = "html") String format) {
+      @PluginAttribute(value = "format", defaultString = "html") String format,
+      // Rate limiter: 'rate' messages per second
+      @PluginAttribute(value = "rate", defaultInt = Integer.MAX_VALUE) int rate,
+      @PluginAttribute(value = "per", defaultDouble = 1d) double per)
+
+  {
     if (name == null) {
       LOGGER.error("No name provided for ConsoleAppender");
       return null;
@@ -379,8 +420,12 @@ public class HipChatAppender extends AbstractAppender {
       LOGGER.error("No Hipchat roomId provided");
       return null;
     }
+    if (per <= 0d) {
+      LOGGER.error("Per must be positive number of seconds");
+      return null;
+    }
 
     return new HipChatAppender(name, layout, filter, ignoreExceptions,
-        authToken, roomId, from, message, notify, color, format);
+        authToken, roomId, from, message, notify, color, format, rate, per);
   }
 }
