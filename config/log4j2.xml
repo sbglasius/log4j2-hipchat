@@ -6,8 +6,10 @@
     </Console>
     
     <HipChat name="HipChatAppender" 
-      authToken="insertyourhipchattokenhere" 
-      roomId="Logging"/>
+      authToken="359f5eceb26d69bb351d63b3173efd" 
+      roomId="Loggingx"
+      rate = "1"
+      per = "1"/>
   </Appenders>
   
   <Loggers>

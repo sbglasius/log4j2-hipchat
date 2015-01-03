@@ -149,10 +149,6 @@ public class HipChatAppender extends AbstractAppender {
     double elapsed = (currentLog - lastLog) / 1000d;
     lastLog = currentLog;
     allowance = Math.min(rate, allowance + elapsed * (rate / per));
-    System.out.println("Message:" + event.getMessage());
-    System.out.println("Current:" + currentLog);
-    System.out.println("Elapsed:" + elapsed);
-    System.out.println("Allowance:" + allowance);
     // Post or silently ignore
     if (allowance >= 1d) {
       appendEvent(event);
