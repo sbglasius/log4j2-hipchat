@@ -17,18 +17,11 @@
  */
 package com.github.log4j2hipchat;
 
-import java.io.Serializable;
-import java.io.UnsupportedEncodingException;
-import java.net.URLEncoder;
-import java.text.SimpleDateFormat;
-import java.util.Arrays;
-import java.util.Date;
-import java.util.Formatter;
-import java.util.HashSet;
-import java.util.List;
-import java.util.Map;
-import java.util.Set;
-
+import io.evanwong.oss.hipchat.v2.HipChatClient;
+import io.evanwong.oss.hipchat.v2.rooms.MessageColor;
+import io.evanwong.oss.hipchat.v2.rooms.MessageFormat;
+import io.evanwong.oss.hipchat.v2.rooms.SendRoomNotificationRequestBuilder;
+import org.apache.logging.log4j.Level;
 import org.apache.logging.log4j.Marker;
 import org.apache.logging.log4j.core.Filter;
 import org.apache.logging.log4j.core.Layout;
@@ -41,387 +34,366 @@ import org.apache.logging.log4j.core.config.plugins.PluginElement;
 import org.apache.logging.log4j.core.config.plugins.PluginFactory;
 import org.apache.logging.log4j.core.layout.PatternLayout;
 
-import com.hipchat.api.v1.HipChatAPI;
-import com.hipchat.api.v1.HipChatAPI.Method;
+import java.io.Serializable;
+import java.text.SimpleDateFormat;
+import java.util.*;
 
 @Plugin(name = "Hipchat", category = "Core", elementType = "appender", printObject = true)
 public class HipChatAppender extends AbstractAppender {
 
-  private static final long serialVersionUID = 1784003660841233595L;
+    private static final long serialVersionUID = 1724003660841233595L;
 
-  private final String roomId;
+    private final String roomId;
 
-  private final String from;
+    private final String from;
 
-  private final String message;
+    private final String messageTemplate;
 
-  private final Boolean notify;
+    private final Boolean notify;
 
-  private final String color;
+    private final MessageFormat format;
 
-  private final String format;
+    private final int rate;
 
-  private final int rate;
+    private final double per;
 
-  private final double per;
+    // messages allowed
+    private double allowance = 0d;
 
-  // messages allowed
-  private double allowance = 0d;
+    // last log call
+    private long lastLog = 0l;
 
-  // last log call
-  private long lastLog = 0l;
+    private final Map<Level, MessageColor> levelMessageColorMap;
 
-  // String substitutions
-  private enum Substitutions {
-    Class("$class"),
-    Level("$level"),
-    Message("$message"),
-    Marker("$marker"),
-    Source("$source"),
-    Context("$context"),
-    Stack("$stack"),
-    Date("$date"),
-    Time("$time");
+    // String substitutions
+    private enum Substitutions {
+        Class("$class"),
+        Level("$level"),
+        Message("$message"),
+        Marker("$marker"),
+        Source("$source"),
+        Context("$context"),
+        Stack("$stack"),
+        Date("$date"),
+        Time("$time");
 
-    private final String sub;
+        private final String sub;
+
+        /**
+         * @param sub
+         */
+        private Substitutions(final String sub) {
+            this.sub = sub;
+        }
+
+        /*
+         * (non-Javadoc)
+         * @see java.lang.Enum#toString()
+         */
+        @Override
+        public String toString() {
+            return sub;
+        }
+    }
+
+    // HipChat Client
+    HipChatClient hipChatClient;
+
+    private static final MessageColor DEFAULT_COLOR = MessageColor.YELLOW;
 
     /**
-     * @param sub
+     * Constructor. Instantiates the HipChat API instance.
      */
-    private Substitutions(final String sub) {
-      this.sub = sub;
+    protected HipChatAppender(final String name,
+                              final Layout<? extends Serializable> layout, final Filter filter,
+                              final boolean ignoreExceptions, final String authToken,
+                              final String roomId, final String from, final String messageTemplate,
+                              final boolean notify, final Map<Level, MessageColor> messageColorMap, final String format,
+                              final int rate, final double per) {
+        super(name, filter, layout, ignoreExceptions);
+        hipChatClient = new HipChatClient(authToken);
+        this.roomId = roomId;
+        this.from = from;
+        this.messageTemplate = messageTemplate;
+        this.notify = notify;
+        this.levelMessageColorMap = messageColorMap;
+        if ("html".equals(format.toLowerCase())) {
+            this.format = MessageFormat.HTML;
+        } else {
+            this.format = MessageFormat.TEXT;
+        }
+        this.rate = rate;
+        this.per = per;
     }
 
-    /*
-     * (non-Javadoc)
-     * @see java.lang.Enum#toString()
+    /**
+     * Append method: checks rate limit and then appends
+     *
+     * @param event The log event
      */
     @Override
-    public String toString() {
-      return sub;
-    }
-  }
-
-  // Instantiate API
-  HipChatAPI hipchatApi = HipChatAPI.INSTANCE;
-
-  // Hipchat API path for rooms
-  private static final String PATH = "rooms/message";
-
-  // Valid Hipchat colors
-  private static final Set<String> VALID_COLORS = new HashSet<String>(
-      Arrays.asList(new String[] {"yellow", "red", "green", "purple", "gray",
-          "random"}));
-
-  private static final String DEFAULT_COLOR = "yellow";
-
-  /**
-   * Constructor. Instantiates the HipChat API instance.
-   */
-  protected HipChatAppender(final String name,
-      final Layout<? extends Serializable> layout, final Filter filter,
-      final boolean ignoreExceptions, final String authToken,
-      final String roomId, final String from, final String message,
-      final boolean notify, final String color, final String format,
-      final int rate, final double per) {
-    super(name, filter, layout, ignoreExceptions);
-    hipchatApi.setAuthToken(authToken);
-    this.roomId = roomId;
-    this.from = from;
-    this.message = message;
-    this.notify = notify;
-    this.color = color;
-    this.format = format;
-    this.rate = rate;
-    this.per = per;
-  }
-
-  /**
-   * Append method: checks rate limit and then appends
-   * 
-   * @param event
-   *        The log event
-   */
-  @Override
-  public void append(LogEvent event) {
-    // Check rate limiter
-    long currentLog = System.currentTimeMillis();
-    double elapsed = (currentLog - lastLog) / 1000d;
-    lastLog = currentLog;
-    allowance = Math.min(rate, allowance + elapsed * (rate / per));
-    // Post or silently ignore
-    if (allowance >= 1d) {
-      appendEvent(event);
-      allowance -= 1d;
-    }
-  }
-
-  /**
-   * Append method that does the work of logging each event
-   * 
-   * @param event
-   *        The log event
-   */
-  public void appendEvent(LogEvent event) {
-
-    String fromStr = doSubstitutions(from, event);
-    // Truncate from to 15 characters
-    fromStr = fromStr.substring(0, Math.min(15, fromStr.length()));
-
-    String messageStr = doSubstitutions(message, event);
-    // Truncate message to 10K characters
-    messageStr = messageStr.substring(0, Math.min(10000, messageStr.length()));
-
-    if (format.equals("html")) {
-      messageStr = messageStr.replace("\n", "<br \\>");
-    }
-
-    String colorStr = pickColor(color, event.getLevel().toString());
-
-    if (!postToHipchat(roomId, fromStr, messageStr, notify, colorStr, format)) {
-      throw new AppenderLoggingException(
-          "failed to write log event to Hipchat server: (from:" + fromStr
-              + ") " + messageStr);
-    }
-  }
-
-  /**
-   * Chooses colors from a non-word delimited list. The last color seen before
-   * the level is encountered is returned.
-   * 
-   * @param color
-   *        Non-word delimited string of colors and levels
-   * @param level
-   *        the level to match
-   * @return color matching the specified level
-   */
-  private String pickColor(String color, String level) {
-    String pickColor = DEFAULT_COLOR;
-    for (String s : color.split("\\W+")) {
-      if (level.equals(s.toUpperCase())) {
-        break;
-      } else {
-        String c = s.toLowerCase();
-        if (VALID_COLORS.contains(c)) {
-          pickColor = c;
+    public void append(LogEvent event) {
+        // Check rate limiter
+        long currentLog = System.currentTimeMillis();
+        double elapsed = (currentLog - lastLog) / 1000d;
+        lastLog = currentLog;
+        allowance = Math.min(rate, allowance + elapsed * (rate / per));
+        // Post or silently ignore
+        if (allowance >= 1d) {
+            appendEvent(event);
+            allowance -= 1d;
         }
-      }
-    }
-    return pickColor;
-  }
-
-  /**
-   * Substitutes for various $-patterns in the api strings
-   * 
-   * @param s
-   *        The string on which to perform substitutions
-   * @param event
-   *        The log event
-   * @return String with patterns substituted
-   */
-  private String doSubstitutions(final String s, LogEvent event) {
-    String sub = new String(s);
-    final StackTraceElement source = event.getSource();
-
-    // Class
-    if (sub.contains(Substitutions.Class.toString())) {
-      // Simple Source Class name
-      String className = source != null ? source.getClassName() : "";
-      String[] classArr = className.split("\\.");
-      sub = sub.replace(Substitutions.Class.toString(),
-          (classArr.length > 0) ? classArr[classArr.length - 1] : "");
     }
 
-    // Level
-    if (sub.contains(Substitutions.Level.toString())) {
-      sub = sub
-          .replace(Substitutions.Level.toString(), event.getLevel().name());
-    }
+    /**
+     * Append method that does the work of logging each event
+     *
+     * @param event The log event
+     */
+    public void appendEvent(LogEvent event) {
 
-    // Message
-    if (sub.contains(Substitutions.Message.toString())) {
-      sub = sub.replace(Substitutions.Message.toString(), event.getMessage()
-          .getFormattedMessage());
-    }
+        String fromStr = doSubstitutions(from, event);
+        // Truncate from to 15 characters
+        fromStr = fromStr.substring(0, Math.min(15, fromStr.length()));
 
-    // Marker
-    if (sub.contains(Substitutions.Marker.toString())) {
-      final Marker marker = event.getMarker();
-      sub = sub.replace(Substitutions.Marker.toString(),
-          marker != null ? marker.getName() : "");
-    }
+        String messageStr = doSubstitutions(messageTemplate, event);
+        // Truncate message to 10K characters
+        messageStr = messageStr.substring(0, Math.min(10000, messageStr.length()));
 
-    // Source
-    if (sub.contains(Substitutions.Source.toString())) {
-      sub = sub.replace(
-          Substitutions.Source.toString(),
-          source != null ? String.format("%n%s.%s(%s:%d)",
-              source.getClassName(), source.getMethodName(),
-              source.getFileName(), source.getLineNumber()) : "");
-    }
-
-    // Thread Context
-    if (sub.contains(Substitutions.Context.toString())) {
-      final StringBuilder sb = new StringBuilder();
-      for (Map.Entry<String, String> entry : event.getContextMap().entrySet()) {
-        sb.append("\n").append(entry.getKey()).append("=")
-            .append(entry.getValue());
-      }
-      final List<String> contextStack = event.getContextStack().asList();
-      if (contextStack != null && !contextStack.isEmpty()) {
-        sb.append("\ncontextStack=").append(contextStack.toString());
-      }
-      sub = sub.replace(Substitutions.Context.toString(),
-          sb.length() > 0 ? sb.toString() : "");
-    }
-
-    // Stack Trace
-    @SuppressWarnings("all")
-    final Throwable thrown = event.getThrown();
-    if (sub.contains(Substitutions.Stack.toString())) {
-      if (thrown != null) {
-        final StringBuilder stackTraceBuilder = new StringBuilder();
-        for (StackTraceElement stackTraceElement : thrown.getStackTrace()) {
-          new Formatter(stackTraceBuilder).format("%nat %s.%s(%s:%d)",
-              stackTraceElement.getClassName(),
-              stackTraceElement.getMethodName(),
-              stackTraceElement.getFileName(),
-              stackTraceElement.getLineNumber());
+        if (format == MessageFormat.HTML) {
+            messageStr = messageStr.replace("\n", "<br \\>");
         }
-        sub = sub.replace(Substitutions.Stack.toString(), String.format(
-            "%n%s: %s%s", thrown.getClass().getCanonicalName(),
-            thrown.getMessage(), stackTraceBuilder.toString()));
-      } else {
-        sub = sub.replace(Substitutions.Stack.toString(), "");
-      }
+
+        MessageColor messageColor = pickMessageColor(event.getLevel());
+
+        try {
+            postToHipChat(messageStr, messageColor);
+        } catch (Exception e) {
+            throw new AppenderLoggingException("failed to write log event to Hipchat server: " + messageStr);
+        }
     }
 
-    // TimeStamp
-    if (sub.contains(Substitutions.Date.toString())) {
-      SimpleDateFormat dateFormat = new SimpleDateFormat("yyyy-MM-dd");
-      Date timeStamp = new Date();
-      timeStamp.setTime(event.getTimeMillis());
-      sub = sub.replace(Substitutions.Date.toString(),
-          dateFormat.format(timeStamp));
-    }
-    if (sub.contains(Substitutions.Time.toString())) {
-      SimpleDateFormat dateFormat = new SimpleDateFormat("HH:mm:ss");
-      Date timeStamp = new Date();
-      timeStamp.setTime(event.getTimeMillis());
-      sub = sub.replace(Substitutions.Time.toString(),
-          dateFormat.format(timeStamp));
+    /**
+     * Chooses colors from a non-word delimited list. The last levelMessageColorMap seen before
+     * the level is encountered is returned. The format of the string is 'red: FATAL, ERROR; yellow: WARN; purple'
+     *
+     * @param level the level to match
+     * @return levelMessageColorMap matching the specified level
+     */
+    private MessageColor pickMessageColor(Level level) {
+        MessageColor pickColor = levelMessageColorMap.get(level);
+
+        return pickColor != null ? pickColor : DEFAULT_COLOR;
     }
 
-    return sub;
-  }
+    /**
+     * Substitutes for various $-patterns in the api strings
+     *
+     * @param s     The string on which to perform substitutions
+     * @param event The log event
+     * @return String with patterns substituted
+     */
+    private String doSubstitutions(final String s, LogEvent event) {
+        String sub = new String(s);
+        final StackTraceElement source = event.getSource();
 
-  /**
-   * Posts to Hipchat. Fails silently and returns false if any of the parameters
-   * are invalid.
-   * 
-   * @param room
-   *        Name of the room to post to
-   * @param username
-   *        Name to post as. Limited to 15 characters
-   * @param message
-   *        Text of the post. Must be URL-safe (no ?,&,+, maybe others)
-   * @param notify
-   *        Whether to notify users of the message
-   * @param color
-   *        What color: options "yellow", "red", "green", "purple", "gray", or
-   *        "random"; default yellow
-   * @return True if the post was successfully received
-   */
-  private boolean postToHipchat(String room, String username, String message,
-      boolean notify, String color, String format) {
-    // Build POST string
-    StringBuilder data = new StringBuilder();
-    try {
-      data.append("room_id=").append(URLEncoder.encode(room, "UTF-8"))
-          .append("&from=").append(URLEncoder.encode(username, "UTF-8"))
-          .append("&message=").append(URLEncoder.encode(message, "UTF-8"))
-          .append("&notify=").append(notify ? "1" : "0").append("&color=")
-          .append(color.toLowerCase()).append("&format=").append(format);
-    } catch (UnsupportedEncodingException e) {
-      e.printStackTrace();
-    }
-    // POST the data
-    return hipchatApi.execute(PATH, data.toString(), Method.POST);
-  }
+        // Class
+        if (sub.contains(Substitutions.Class.toString())) {
+            // Simple Source Class name
+            String className = source != null ? source.getClassName() : "";
+            String[] classArr = className.split("\\.");
+            sub = sub.replace(Substitutions.Class.toString(),
+                    (classArr.length > 0) ? classArr[classArr.length - 1] : "");
+        }
 
-  /**
-   * Factory method for creating a {@link HipChatAppender} provider within the
-   * plugin manager.
-   *
-   * @param name
-   *        The name of the Appender.
-   * @param filter
-   *        A Filter to determine if the event should be handled by this
-   *        Appender.
-   * @param layout
-   *        The Layout to use to format the LogEvent defaults to {@code "%m%n"}.
-   * @param ignoreExceptions
-   *        The default is {@code true}, causing exceptions encountered while
-   *        appending events to be internally logged and then ignored. When set
-   *        to {@code false} exceptions will be propagated to the caller,
-   *        instead. Must be set to {@code false} when wrapping this Appender in
-   *        a {@link org.apache.logging.log4j.core.appender.FailoverAppender}.
-   * @param authToken
-   *        HipChat room notification token
-   * @param roomId
-   *        HipChat room_id parameter
-   * @param from
-   *        HipChat from parameter
-   * @param message
-   *        HipChat message parameter
-   * @param notify
-   *        HipChat notify parameter
-   * @param color
-   *        parameter
-   * @param format
-   *        parameter
-   * @return The Appender
-   */
-  @PluginFactory
-  public static HipChatAppender createHipchatAppender(
-      @PluginElement("Filter") Filter filter,
-      @PluginElement("Layout") Layout<? extends Serializable> layout,
-      @PluginAttribute(value = "name") String name,
-      @PluginAttribute(value = "ignoreExceptions", defaultBoolean = true) Boolean ignoreExceptions,
-      // Hipchat API specific
-      @PluginAttribute(value = "authToken") String authToken,
-      @PluginAttribute(value = "roomId") String roomId,
-      @PluginAttribute(value = "from", defaultString = "$class") String from,
-      @PluginAttribute(value = "message", defaultString = "$level: $message $marker <i>$source</i> $context $stack") String message,
-      @PluginAttribute(value = "notify", defaultBoolean = true) Boolean notify,
-      @PluginAttribute(value = "color", defaultString = "red: FATAL, ERROR; yellow: WARN; purple") String color,
-      @PluginAttribute(value = "format", defaultString = "html") String format,
-      // Rate limiter: 'rate' messages per second
-      @PluginAttribute(value = "rate", defaultInt = Integer.MAX_VALUE) int rate,
-      @PluginAttribute(value = "per", defaultDouble = 1d) double per)
+        // Level
+        if (sub.contains(Substitutions.Level.toString())) {
+            sub = sub
+                    .replace(Substitutions.Level.toString(), event.getLevel().name());
+        }
 
-  {
-    if (name == null) {
-      LOGGER.error("No name provided for ConsoleAppender");
-      return null;
-    }
-    if (layout == null) {
-      layout = PatternLayout.createDefaultLayout();
-    }
-    if (authToken == null) {
-      LOGGER.error("A Hipchat authToken is required");
-      return null;
-    }
-    if (roomId == null) {
-      LOGGER.error("No Hipchat roomId provided");
-      return null;
-    }
-    if (per <= 0d) {
-      LOGGER.error("Per must be positive number of seconds");
-      return null;
+        // Message
+        if (sub.contains(Substitutions.Message.toString())) {
+            sub = sub.replace(Substitutions.Message.toString(), event.getMessage()
+                    .getFormattedMessage());
+        }
+
+        // Marker
+        if (sub.contains(Substitutions.Marker.toString())) {
+            final Marker marker = event.getMarker();
+            sub = sub.replace(Substitutions.Marker.toString(),
+                    marker != null ? marker.getName() : "");
+        }
+
+        // Source
+        if (sub.contains(Substitutions.Source.toString())) {
+            sub = sub.replace(
+                    Substitutions.Source.toString(),
+                    source != null ? String.format("%n%s.%s(%s:%d)",
+                            source.getClassName(), source.getMethodName(),
+                            source.getFileName(), source.getLineNumber()) : "");
+        }
+
+        // Thread Context
+        if (sub.contains(Substitutions.Context.toString())) {
+            final StringBuilder sb = new StringBuilder();
+            for (Map.Entry<String, String> entry : event.getContextMap().entrySet()) {
+                sb.append("\n").append(entry.getKey()).append("=")
+                        .append(entry.getValue());
+            }
+            final List<String> contextStack = event.getContextStack().asList();
+            if (contextStack != null && !contextStack.isEmpty()) {
+                sb.append("\ncontextStack=").append(contextStack.toString());
+            }
+            sub = sub.replace(Substitutions.Context.toString(),
+                    sb.length() > 0 ? sb.toString() : "");
+        }
+
+        // Stack Trace
+        @SuppressWarnings("all")
+        final Throwable thrown = event.getThrown();
+        if (sub.contains(Substitutions.Stack.toString())) {
+            if (thrown != null) {
+                final StringBuilder stackTraceBuilder = new StringBuilder();
+                for (StackTraceElement stackTraceElement : thrown.getStackTrace()) {
+                    new Formatter(stackTraceBuilder).format("%nat %s.%s(%s:%d)",
+                            stackTraceElement.getClassName(),
+                            stackTraceElement.getMethodName(),
+                            stackTraceElement.getFileName(),
+                            stackTraceElement.getLineNumber());
+                }
+                sub = sub.replace(Substitutions.Stack.toString(), String.format(
+                        "%n%s: %s%s", thrown.getClass().getCanonicalName(),
+                        thrown.getMessage(), stackTraceBuilder.toString()));
+            } else {
+                sub = sub.replace(Substitutions.Stack.toString(), "");
+            }
+        }
+
+        // TimeStamp
+        if (sub.contains(Substitutions.Date.toString())) {
+            SimpleDateFormat dateFormat = new SimpleDateFormat("yyyy-MM-dd");
+            Date timeStamp = new Date();
+            timeStamp.setTime(event.getTimeMillis());
+            sub = sub.replace(Substitutions.Date.toString(),
+                    dateFormat.format(timeStamp));
+        }
+        if (sub.contains(Substitutions.Time.toString())) {
+            SimpleDateFormat dateFormat = new SimpleDateFormat("HH:mm:ss");
+            Date timeStamp = new Date();
+            timeStamp.setTime(event.getTimeMillis());
+            sub = sub.replace(Substitutions.Time.toString(),
+                    dateFormat.format(timeStamp));
+        }
+
+        return sub;
     }
 
-    return new HipChatAppender(name, layout, filter, ignoreExceptions,
-        authToken, roomId, from, message, notify, color, format, rate, per);
-  }
+    /**
+     * Posts to Hipchat. Fails silently.
+     *
+     * @param message The message to send
+     * @param color   What levelMessageColorMap: options "yellow", "red", "green", "purple", "gray", or
+     *                "random"; default yellow
+     */
+    private void postToHipChat(String message, MessageColor color) {
+
+        SendRoomNotificationRequestBuilder builder = hipChatClient.prepareSendRoomNotificationRequestBuilder(roomId, message);
+        builder.setColor(color).setNotify(notify).setMessageFormat(MessageFormat.HTML).build().execute();
+
+    }
+
+    /**
+     * Build a map of Levels to HipChat Colors
+     *
+     * @param color The format of the string is 'red: FATAL, ERROR; yellow: WARN; purple'
+     * @return A map of Levels to MessageColors
+     */
+    private static Map<Level, MessageColor> parseLevelToColors(String color) {
+        Map<Level, MessageColor> messageColorMap = new HashMap<Level, MessageColor>();
+        for (String current : color.split(";")) {
+            if (!current.contains(":")) {
+                throw new IllegalArgumentException("Color segment does not contain [levelMessageColorMap: LEVEL1, LEVEL2]");
+            }
+            String[] currentSplit = current.trim().split(":");
+            // Figure out, if this is a levelMessageColorMap. If not this will also throw an IllegalArgumentException
+            MessageColor currentColor = MessageColor.valueOf(currentSplit[0].trim().toUpperCase());
+
+            for (String levelString : currentSplit[1].split(",")) {
+                // Figure out, if this is a level. If not this will also throw an IllegalArgumentException
+                Level level = Level.valueOf(levelString.trim().toUpperCase());
+                messageColorMap.put(level, currentColor);
+            }
+        }
+        return messageColorMap;
+    }
+
+
+    /**
+     * Factory method for creating a {@link HipChatAppender} provider within the
+     * plugin manager.
+     *
+     * @param name             The name of the Appender.
+     * @param filter           A Filter to determine if the event should be handled by this
+     *                         Appender.
+     * @param layout           The Layout to use to format the LogEvent defaults to {@code "%m%n"}.
+     * @param ignoreExceptions The default is {@code true}, causing exceptions encountered while
+     *                         appending events to be internally logged and then ignored. When set
+     *                         to {@code false} exceptions will be propagated to the caller,
+     *                         instead. Must be set to {@code false} when wrapping this Appender in
+     *                         a {@link org.apache.logging.log4j.core.appender.FailoverAppender}.
+     * @param authToken        HipChat room notification token
+     * @param roomId           HipChat room_id parameter
+     * @param from             HipChat from parameter
+     * @param message          HipChat message parameter
+     * @param notify           HipChat notify parameter
+     * @param color            parameter
+     * @param format           parameter
+     * @return The Appender
+     */
+    @PluginFactory
+    public static HipChatAppender createHipchatAppender(
+            @PluginElement("Filter") Filter filter,
+            @PluginElement("Layout") Layout<? extends Serializable> layout,
+            @PluginAttribute(value = "name") String name,
+            @PluginAttribute(value = "ignoreExceptions", defaultBoolean = true) Boolean ignoreExceptions,
+            // Hipchat API specific
+            @PluginAttribute(value = "authToken") String authToken,
+            @PluginAttribute(value = "roomId") String roomId,
+            @PluginAttribute(value = "from", defaultString = "$class") String from,
+            @PluginAttribute(value = "message", defaultString = "$level: $message $marker <i>$source</i> $context $stack") String message,
+            @PluginAttribute(value = "notify", defaultBoolean = true) Boolean notify,
+            @PluginAttribute(value = "levelMessageColorMap", defaultString = "red: FATAL, ERROR; yellow: WARN; purple") String color,
+            @PluginAttribute(value = "format", defaultString = "html") String format,
+            // Rate limiter: 'rate' messages per second
+            @PluginAttribute(value = "rate", defaultInt = Integer.MAX_VALUE) int rate,
+            @PluginAttribute(value = "per", defaultDouble = 1d) double per)
+
+    {
+        if (name == null) {
+            LOGGER.error("No name provided for ConsoleAppender");
+            return null;
+        }
+        if (layout == null) {
+            layout = PatternLayout.createDefaultLayout();
+        }
+        if (authToken == null) {
+            LOGGER.error("A Hipchat authToken is required");
+            return null;
+        }
+        if (roomId == null) {
+            LOGGER.error("No Hipchat roomId provided");
+            return null;
+        }
+        if (per <= 0d) {
+            LOGGER.error("Per must be positive number of seconds");
+            return null;
+        }
+
+        Map<Level, MessageColor> levelToColors = parseLevelToColors(color);
+
+        return new HipChatAppender(name, layout, filter, ignoreExceptions,
+                authToken, roomId, from, message, notify, levelToColors, format, rate, per);
+    }
+
 }
